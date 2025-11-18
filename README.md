@@ -1,4 +1,4 @@
-# Assignment 4: Global Illumination
+# Assignment 3
 
 Name: 王俊烨
 Student ID: 2022533085
@@ -7,7 +7,7 @@ Student ID: 2022533085
 
 ## Deadline
 
-**November 30, 2022, 22:00 UTC+8**
+**November 21, 2025, 22:00 UTC+8**
 
 ## Statement
 
