@@ -32,20 +32,28 @@ bool AABB::isOverlap(const AABB &other) const {
 }
 
 bool AABB::intersect(const Ray &ray, Float *t_in, Float *t_out) const {
-  // TODO(HW3): implement ray intersection with AABB.
-  // ray distance for two intersection points are returned by pointers.
-  //
-  // This method should modify t_in and t_out as the "time"
-  // when the ray enters and exits the AABB respectively.
-  //
-  // And return true if there is an intersection, false otherwise.
-  //
-  // Useful Functions:
-  // @see Ray::safe_inverse_direction
-  //    for getting the inverse direction of the ray.
-  // @see Min/Max/ReduceMin/ReduceMax
-  //    for vector min/max operations.
-  UNIMPLEMENTED;
+  AssertAllValid(low_bnd, upper_bnd, ray.origin, ray.direction);
+  Float t_enter = ray.t_min;
+  Float t_exit  = ray.t_max;
+
+  for (int i = 0; i < 3; ++i) {
+    Float t0 = (low_bnd[i] - ray.origin[i]) * ray.safe_inverse_direction[i];
+    Float t1 = (upper_bnd[i] - ray.origin[i]) * ray.safe_inverse_direction[i];
+    if (t0 > t1) {
+      Float temp = t0;
+      t0         = t1;
+      t1         = temp;
+    }
+
+    t_enter = Max(t_enter, t0);
+    t_exit  = Min(t_exit, t1);
+
+    if (t_enter > t_exit) return false;
+  }
+
+  if (t_in) *t_in = t_enter;
+  if (t_out) *t_out = t_exit;
+  return t_exit >= ray.t_min && t_enter <= ray.t_max;
 }
 
 /* ===================================================================== *
