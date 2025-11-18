@@ -1,5 +1,7 @@
 #include "rdr/accel.h"
 
+#include <limits>
+
 #include "rdr/canary.h"
 #include "rdr/interaction.h"
 #include "rdr/math_aliases.h"
@@ -91,11 +93,30 @@ bool TriangleIntersect(Ray &ray, const uint32_t &triangle_index,
   // Useful Functions:
   // You can use @see Cross and @see Dot for determinant calculations.
 
-  // Delete the following lines after you implement the function
-  InternalScalarType u = InternalScalarType(0);
-  InternalScalarType v = InternalScalarType(0);
-  InternalScalarType t = InternalScalarType(0);
-  UNIMPLEMENTED;
+  const InternalVecType origin = Cast<InternalScalarType>(ray.origin);
+  const InternalVecType edge1  = v1 - v0;
+  const InternalVecType edge2  = v2 - v0;
+
+  const InternalVecType pvec   = Cross(dir, edge2);
+  const InternalScalarType det = Dot(edge1, pvec);
+  const InternalScalarType epsilon =
+      std::numeric_limits<InternalScalarType>::epsilon();
+
+  if (std::abs(det) < epsilon) return false;
+
+  const InternalScalarType inv_det = InternalScalarType(1) / det;
+  const InternalVecType tvec       = origin - v0;
+
+  InternalScalarType u = Dot(tvec, pvec) * inv_det;
+  if (u < 0 || u > 1) return false;
+
+  const InternalVecType qvec = Cross(tvec, edge1);
+  InternalScalarType v       = Dot(dir, qvec) * inv_det;
+  if (v < 0 || (u + v) > 1) return false;
+
+  InternalScalarType t = Dot(edge2, qvec) * inv_det;
+  const Float t_float  = static_cast<Float>(t);
+  if (!ray.withinTimeRange(t_float)) return false;
 
   // We will reach here if there is an intersection
 
