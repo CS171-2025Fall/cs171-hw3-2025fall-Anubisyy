@@ -85,26 +85,13 @@ Vec3f PerfectRefraction::sample(
   // Whether the ray is entering the medium
   bool entering = cos_theta_i > 0;
   // Corrected eta by direction
-  Float eta_corrected = entering ? eta : 1.0F / eta;
-
-  // TODO(HW3): implement the refraction logic here.
-  //
-  // You should set the `interaction.wi` to the direction of the "in-coming
-  // light" after refraction or reflection. Note that `interaction.wi` should
-  // always point away from the surface.
-  //
-  // You may find the following values useful:
-  //
-  // `interaction.wo`: the out-going view direction, pointing away from the
-  // surface.
-  // `normal`: the normal of the surface at the interaction point, pointing
-  // away from the surface.
-  //
-  // You may find the following functions useful:
-  // @see Refract for refraction calculation.
-  // @see Reflect for reflection calculation.
-
-  UNIMPLEMENTED;
+  Float eta_ratio = entering ? (1.0F / eta) : eta;
+  Vec3f oriented_normal = entering ? normal : -normal;
+  Vec3f wi;
+  if (!Refract(interaction.wo, oriented_normal, eta_ratio, wi)) {
+    wi = Reflect(interaction.wo, oriented_normal);
+  }
+  interaction.wi = Normalize(wi);
 
   // Set the pdf and return value, we dont need to understand the value now
   if (pdf != nullptr) *pdf = 1.0F;
