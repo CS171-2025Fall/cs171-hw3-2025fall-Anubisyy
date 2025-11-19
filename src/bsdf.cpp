@@ -85,7 +85,10 @@ Vec3f PerfectRefraction::sample(
   // Whether the ray is entering the medium
   bool entering = cos_theta_i > 0;
   // Corrected eta by direction
-  Float eta_ratio = entering ? (1.0F / eta) : eta;
+
+  // Float eta_ratio = entering ? (1.0F / eta) : eta;
+  Float eta_ratio = entering ? eta : (1.0F / eta);
+  
   Vec3f oriented_normal = entering ? normal : -normal;
   Vec3f wi;
   if (!Refract(interaction.wo, oriented_normal, eta_ratio, wi)) {
