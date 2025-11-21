@@ -5,38 +5,100 @@
 \usepackage{listings}
 \usepackage{bm}
 \usepackage{amsmath}
+\usepackage{enumitem}
 
 \definecolor{blve}{rgb}{0.3372549 , 0.61176471, 0.83921569}
 \definecolor{gr33n}{rgb}{0.29019608, 0.7372549, 0.64705882}
 \makeatletter
 \lst@InstallKeywords k{class}{classstyle}\slshape{classstyle}{}ld
 \makeatother
-\lstset{language=C++,
-	basicstyle=\ttfamily,
-	keywordstyle=\color{blve}\ttfamily,
-	stringstyle=\color{red}\ttfamily,
-	commentstyle=\color{magenta}\ttfamily,
-	morecomment=[l][\color{magenta}]{\#},
-	classstyle = \bfseries\color{gr33n}, 
-	tabsize=2
+\lstset{
+  language=C++,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blve}\ttfamily,
+  stringstyle=\color{red}\ttfamily,
+  commentstyle=\color{magenta}\ttfamily,
+  morecomment=[l][\color{magenta}]{\#},
+  classstyle = \bfseries\color{gr33n},
+  tabsize=2,
+  breaklines=true,
+  breakatwhitespace=true,
+  columns=fullflexible
 }
-\lstset{basicstyle=\ttfamily}
 
 % Title portion
-\title{Assignment 1:\\ {Exploring OpenGL Programming}} 
+\title{Assignment 3:\\ Basic Ray Tracing Renderer}
 
-\author{Name: \quad \\ student number:\
-\\email: \quad \texttt{}}
+\author{Name: Junye Wang\\student number: 2022533085\\email: \texttt{}}
 
 % Document starts
 \begin{document}
 \maketitle
 
-\vspace*{2 ex}
-
 \section{Introduction}
+This report documents my implementation of the mandatory components for CS171 Assignment~3: Basic Ray Tracing. The renderer loads Cornell box scenes, builds a bounding volume hierarchy (BVH) over triangle meshes, and evaluates direct illumination with specular transmission support. I focused on building a correct and well-instrumented reference implementation rather than pursuing the optional extensions such as multiple light sampling or area lights. All experiments were performed on macOS 14.6 with Clang~17 and the provided CMake toolchain.
+
+\section{System Overview}
+The codebase separates geometry handling, acceleration, and integration in the \texttt{rdr} namespace. I retained this architecture and implemented the homework tasks in the following modules:
+\begin{itemize}[leftmargin=*,noitemsep]
+  \item Geometry intersections (\texttt{src/accel.cpp}) for triangle and axis-aligned bounding boxes (AABBs).
+  \item A general-purpose BVH builder (\texttt{include/rdr/bvh\_tree.h}) that supports the triangle accelerator.
+  \item The \texttt{IntersectionTestIntegrator} and the \texttt{PerfectRefraction} BSDF (\texttt{src/integrator.cpp}, \texttt{src/bsdf.cpp}) for lighting, shadows, and refraction.
+  \item Driver utilities (\texttt{run.sh}, \texttt{data/*.json}) for rendering Cornell box variants at \(512\times512\) with at least \(8\) samples per pixel (spp).
+\end{itemize}
+
 \section{Implementation Details}
+\subsection{Build and Development Environment}
+I configured the project using \texttt{cmake -B build} and compiled with \texttt{cmake --build build}.
+\subsection{Ray--Triangle Intersection}
+Listing~\ref{lst:triangle} summarizes the Möller--Trumbore routine added to \texttt{TriangleIntersect} in \texttt{src/accel.cpp}. I operate in double precision internally to reduce numerical errors, compute the barycentric coordinates \(u, v\), and reject hits when they leave the \([0,1]\) simplex or fall outside the ray's time range. When a hit occurs, I evaluate the barycentric differentials via \texttt{CalculateTriangleDifferentials} and clamp the ray's \texttt{t\_max} to support closest-hit queries.
+
+\begin{lstlisting}[caption={Core steps of the triangle test in \texttt{TriangleIntersect}.},label={lst:triangle}]
+const InternalVecType edge1 = v1 - v0;
+const InternalVecType edge2 = v2 - v0;
+const InternalVecType pvec  = Cross(dir, edge2);
+const InternalScalarType det = Dot(edge1, pvec);
+if (std::abs(det) < epsilon) return false;
+InternalScalarType u = Dot(tvec, pvec) * inv_det;
+InternalScalarType v = Dot(dir, qvec) * inv_det;
+InternalScalarType t = Dot(edge2, qvec) * inv_det;
+\end{lstlisting}
+
+\subsection{Ray--AABB Intersection}
+The slab test inside \texttt{AABB::intersect} iterates over the three axes, leveraging the ray's cached inverse direction to compute entry and exit times. The method returns false immediately when the intervals become disjoint, otherwise it updates optional \texttt{t\_in} and \texttt{t\_out} outputs. This routine is used extensively by the BVH traversal.
+
+\subsection{BVH Construction}
+The general BVH builder in \texttt{BVHTree::build} now supports recursive median splits along the dominant axis of each node's bounding box. For each internal node I precompute its merged AABB, partition the node range with \texttt{std::nth\_element}, and recurse until either a single primitive remains or the depth reaches \texttt{CUTOFF\_DEPTH}. Leaf nodes store spans in the shared triangle array, while traversal performs bounding-box rejection before dispatching to the callback that calls \texttt{TriangleIntersect}. I retained the placeholder for optional SAH splitting but did not implement it.
+
+\subsection{Intersection Test Integrator}
+The integrator now spawns multiple rays per pixel using a Halton sampler. During rendering, each thread:
+\begin{enumerate}[leftmargin=*,noitemsep]
+  \item Calls \texttt{sampler.getPixelSample()} to obtain stratified sub-pixel coordinates.
+  \item Generates a differential ray via \texttt{Camera::generateDifferentialRay}.
+  \item Evaluates radiance with \texttt{Li} and accumulates \(\frac{L}{\text{spp}}\) into the film.
+\end{enumerate}
+This Monte Carlo accumulation implements the anti-aliasing requirement. In \texttt{Li}, I march along the ray up to \texttt{max\_depth}, chaining specular refractions using \texttt{PerfectRefraction} materials until a diffuse surface is found. The direct component is then computed and returned; if no diffuse hit is encountered the contribution is \(0\).
+
+\subsection{Perfect Refraction Material}
+\texttt{PerfectRefraction::sample} now uses the geometric normal to decide whether the ray is entering or exiting and selects the proper eta ratio. I call \texttt{Refract}; in the rare case of total internal reflection I fall back to mirror reflection. The sampled direction is normalized, assigned to \texttt{interaction.wi}, and the PDF is one because the distribution is delta. This implementation fulfils the refractive-material requirement and enables glass panels in the Cornell box.
+
+\subsection{Direct Lighting and Shadows}
+To compute direct lighting, I cast a shadow ray from the surface to the hard-coded point light using \texttt{SurfaceInteraction::spawnRayTo}. Any occlusion causes early termination. For visible lights, I evaluate the Lambertian BRDF with:
+\[
+L = \frac{\Phi}{r^2} \, \rho_d(\omega_i,\omega_o) \max(0, n \cdot \omega_i),
+\]
+where \(\Phi\) is the light flux, \(r\) is the distance to the light, and \(\rho_d\) comes from \texttt{IdealDiffusion::evaluate}. This satisfies the direct-illumination requirement with diffuse BRDF and explicit shadow testing.
+
+\subsection{Anti-Aliasing Verification}
+The final renders use \(spp = 8\) by default, as configured in \texttt{IntersectionTestIntegrator}'s constructor. Increasing \texttt{spp} in the JSON scene files produces smoother edges while confirming that Monte Carlo sampling is active. Each pixel sample is clamped to its pixel bounds using the supplied assertions, which also helped debug camera differentials.
+
 \section{Results}
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{result.png}
+  \caption{Cornell box rendered at \(512\times512\), \(8\) spp, and gamma-corrected display. The glass pane refracts incoming rays while boxes receive shadowed direct light.}
+\end{figure}
+I rendered the Cornell box variants in \texttt{data/cbox\_no\_light\_refract.json} and \texttt{data/glass\_cbox.json}. The BVH reduces render time from several minutes (naïve per-triangle intersection) to under twenty seconds on my laptop CPU. Figure~1 highlights crisp penumbral-free shadows from the point light and accurate refraction through the glass pane.
 
 \end{document}
 
